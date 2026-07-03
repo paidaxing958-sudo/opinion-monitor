@@ -398,13 +398,19 @@ function parseEmbeddedDate(s) {
 }
 
 function getArticleMonth(a) {
+  // 优先用 Python 端算好的 _ym（已处理 published_at 缺失 fallback 到上月）
   if (a._ym) return a._ym;
   const p = a.published_at || '';
   const m = String(p).match(/^(\d{4})-(\d{2})/);
   if (m) return m[1] + '-' + m[2];
+  // fallback：crawled_at 的上一月
   const c = a.crawled_at || '';
   const m2 = String(c).match(/^(\d{4})-(\d{2})/);
-  if (m2) return m2[1] + '-' + m2[2];
+  if (m2) {
+    let y = parseInt(m2[1]), mo = parseInt(m2[2]);
+    if (mo === 1) return (y-1) + '-12';
+    return y + '-' + String(mo-1).padStart(2, '0');
+  }
   return null;
 }
 
@@ -534,6 +540,19 @@ window.fetch = function(url) {
 let currentTab = 'monthly';
 let currentBank = '';
 let currentSource = '';
+
+function filterEmbeddedArticles(arts, bank, source, dateFrom, dateTo) {
+  return (arts || []).filter(a => {
+    if (bank && a.bank !== bank) return false;
+    if (source && a.source !== source) return false;
+    // 严格用 published_at，缺失的（crawled_at 兜底）一律不参与日期筛选
+    if (!a.published_at) return false;
+    const d = a.published_at.slice(0, 10);
+    if (dateFrom && d < dateFrom) return false;
+    if (dateTo && d > dateTo) return false;
+    return true;
+  });
+}
 let monthlyData = [];
 let selectedMonth = 'all';
 let dailyMode = 'today';
@@ -566,7 +585,6 @@ function setDailyMode(mode) {
   document.getElementById('dailyDateRange').style.display = showRange ? 'inline' : 'none';
   document.getElementById('dailyDateLabel').style.display = showRange ? 'inline' : 'none';
   if (mode === 'today') {
-    // 当日模式：直接重新加载今天
     initDailyDate();
     reloadData();
   }
@@ -581,7 +599,6 @@ function initDailyDate() {
     const todayStr = `${y}-${m}-${d}`;
     dailyDateFrom = todayStr;
     dailyDateTo = todayStr;
-    // 同步给 input
     const df = document.getElementById('dailyDateFrom');
     const dt = document.getElementById('dailyDateTo');
     if (df) df.value = todayStr;
@@ -634,26 +651,32 @@ async function loadStats() {
       params.set('date_to', `${selectedMonth}-${String(lastDay).padStart(2,'0')}`);
     }
   }
-  const res = await fetch('/api/stats' + (params.toString() ? '?' + params.toString() : ''));
-  const data = await res.json();
-  document.getElementById('totalCount').textContent = data.total || 0;
-  document.getElementById('negCount').textContent = data.negative || 0;
-  document.getElementById('posCount').textContent = data.positive || 0;
+  // 静态页面：从 EMBEDDED_DATA 本地算 stats
+  const arts = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.articles) || [];
+  const filtered = filterEmbeddedArticles(arts, currentBank, currentSource, currentTab==='daily' ? dailyDateFrom : (selectedMonth!=='all' ? selectedMonth+'-01' : null), currentTab==='daily' ? dailyDateTo : (selectedMonth!=='all' ? selectedMonth+'-31' : null));
+  const tot = filtered.length;
+  const neg = filtered.filter(a => a.sentiment === '负面').length;
+  const pos = filtered.filter(a => a.sentiment === '正面').length;
+  document.getElementById('totalCount').textContent = tot;
+  document.getElementById('negCount').textContent = neg;
+  document.getElementById('posCount').textContent = pos;
 }
 
 // ============ Monthly View ============
 async function loadMonthly() {
-  const params = new URLSearchParams();
-  if (currentBank) params.set('bank', currentBank);
-  if (currentSource) params.set('source', currentSource);
-  if (selectedMonth && selectedMonth !== 'all') {
-    const [y, m] = selectedMonth.split('-');
-    const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
-    params.set('date_from', `${selectedMonth}-01`);
-    params.set('date_to', `${selectedMonth}-${String(lastDay).padStart(2,'0')}`);
+  // 静态页面：直接用 EMBEDDED_DATA，不调 /api/monthly
+  let data = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.monthly) || [];
+  // 客户端按 bank/source/month 过滤
+  if (currentBank) {
+    data = data.map(m => {
+      const bb = (m.by_bank || []).filter(b => b.bank === currentBank);
+      const t = bb.reduce((s, b) => s + b.count, 0);
+      const p = bb.reduce((s, b) => s + (b.positive || 0), 0);
+      const n = bb.reduce((s, b) => s + (b.negative || 0), 0);
+      return { ...m, by_bank: bb, total: t, positive: p, negative: n };
+    });
   }
-  const res = await fetch('/api/monthly' + (params.toString() ? '?' + params.toString() : ''));
-  monthlyData = await res.json();
+  monthlyData = data;
   renderMonthly();
 }
 
@@ -799,11 +822,20 @@ async function loadMonthArticles(month) {
   const container = document.getElementById('articles-' + month);
   if (!container || container.dataset.loaded) return;
   container.innerHTML = '<div style="color:#999;padding:8px;">加载中...</div>';
-  const params = new URLSearchParams();
-  if (currentBank) params.set('bank', currentBank);
-  if (currentSource) params.set('source', currentSource);
-  const res = await fetch(`/api/month/${month}${params.toString() ? '?' + params.toString() : ''}`);
-  const articles = await res.json();
+  // 静态页面：从 EMBEDDED_DATA.articles 筛当月
+  const arts = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.articles) || [];
+  const [yy, mm] = month.split('-');
+  const first = month + '-01';
+  const lastDay = new Date(parseInt(yy), parseInt(mm), 0).getDate();
+  const last = month + '-' + String(lastDay).padStart(2, '0');
+  const articles = arts.filter(a => {
+    if (!a.published_at) return false;
+    const d = a.published_at.slice(0, 10);
+    if (d < first || d > last) return false;
+    if (currentBank && a.bank !== currentBank) return false;
+    if (currentSource && a.source !== currentSource) return false;
+    return true;
+  }).slice(0, 100);
   if (!articles || articles.length === 0) {
     container.innerHTML = '<div style="color:#ccc;padding:8px;">无数据</div>';
     return;
@@ -837,13 +869,18 @@ async function loadMonthArticles(month) {
 async function loadDaily() {
   initDailyDate();
   const dailySource = document.getElementById('dailySourceFilter').value;
-  const params = new URLSearchParams();
-  if (dailySource) params.set('source', dailySource);
-  if (dailyDateFrom) params.set('date_from', dailyDateFrom);
-  if (dailyDateTo) params.set('date_to', dailyDateTo);
-  params.set('bank', '工商银行');
-  const res = await fetch('/api/stats?' + params.toString());
-  const stats = await res.json();
+  // 静态页面：从 EMBEDDED_DATA 本地筛（严格 published_at）
+  const arts = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.articles) || [];
+  const filtered = arts.filter(a => {
+    if (a.bank !== '工商银行') return false;
+    if (dailySource && a.source !== dailySource) return false;
+    if (!a.published_at) return false;
+    const d = a.published_at.slice(0, 10);
+    if (dailyDateFrom && d < dailyDateFrom) return false;
+    if (dailyDateTo && d > dailyDateTo) return false;
+    return true;
+  });
+  const stats = { total: filtered.length, positive: filtered.filter(a=>a.sentiment==='正面').length, negative: filtered.filter(a=>a.sentiment==='负面').length, by_bank: [{ bank: '工商银行', count: filtered.length, positive: filtered.filter(a=>a.sentiment==='正面').length, negative: filtered.filter(a=>a.sentiment==='负面').length }] };
   const container = document.getElementById('bankCards');
 
   // 更新 summary banner
@@ -883,15 +920,18 @@ async function loadDaily() {
 async function loadBankArticles(bank) {
   const container = document.getElementById('bank-body-' + bank);
   if (!container) return;
-  const params = new URLSearchParams();
-  params.set('bank', bank);
-  params.set('limit', '500');
   const dailySource = document.getElementById('dailySourceFilter').value;
-  if (dailySource) params.set('source', dailySource);
-  if (dailyDateFrom) params.set('date_from', dailyDateFrom);
-  if (dailyDateTo) params.set('date_to', dailyDateTo);
-  const res = await fetch('/api/articles?' + params.toString());
-  const articles = await res.json();
+  // 静态页面：本地筛（严格 published_at）
+  const arts = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.articles) || [];
+  const articles = arts.filter(a => {
+    if (a.bank !== bank) return false;
+    if (dailySource && a.source !== dailySource) return false;
+    if (!a.published_at) return false;
+    const d = a.published_at.slice(0, 10);
+    if (dailyDateFrom && d < dailyDateFrom) return false;
+    if (dailyDateTo && d > dailyDateTo) return false;
+    return true;
+  }).slice(0, 500);
 
   // 按 (source, keyword) 分组；用 published_at 倒序
   const grouped = {};
