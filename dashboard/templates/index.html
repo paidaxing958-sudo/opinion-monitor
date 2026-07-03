@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>银行舆情监测看板</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: #f0f2f5; color: #333; font-size: 14px;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+  color: #fff; padding: 18px 30px; display: flex;
+  align-items: center; justify-content: space-between;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+}
+.header h1 { font-size: 22px; font-weight: 600; }
+.header .subtitle { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+.header .stats { display: flex; gap: 24px; }
+.header .stat-item { text-align: center; }
+.header .stat-num { font-size: 28px; font-weight: 700; }
+.header .stat-label { font-size: 12px; opacity: 0.8; }
+.header .stat-num.neg { color: #fff; }
+.header .stat-num.pos { color: #2ecc71; }
+
+/* Tabs */
+.tabs {
+  background: #fff; padding: 0 30px; display: flex;
+  gap: 0; border-bottom: 1px solid #e0e0e0;
+}
+.tab-btn {
+  padding: 14px 28px; border: none; background: none;
+  cursor: pointer; font-size: 15px; color: #666;
+  border-bottom: 3px solid transparent; transition: all 0.2s;
+}
+.tab-btn:hover { color: #c0392b; }
+.tab-btn.active { color: #c0392b; border-bottom-color: #c0392b; font-weight: 600; }
+
+/* Container */
+.container { max-width: 1200px; margin: 20px auto; padding: 0 20px; }
+
+/* Monthly Summary */
+.month-card {
+  background: #fff; border-radius: 12px; margin-bottom: 16px;
+  overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.month-header {
+  padding: 16px 24px; cursor: pointer; display: flex;
+  align-items: center; justify-content: space-between;
+  border-bottom: 1px solid #f0f0f0; transition: background 0.2s;
+}
+.month-header:hover { background: #fafafa; }
+.month-header .month-title {
+  font-size: 18px; font-weight: 600; color: #2c3e50;
+}
+.month-header .month-stats { display: flex; gap: 20px; align-items: center; }
+.month-header .month-stat { font-size: 13px; color: #666; }
+.month-header .month-stat .num { font-size: 20px; font-weight: 700; }
+.month-header .month-stat .num.neg { color: #e74c3c; }
+.month-header .month-stat .num.pos { color: #27ae60; }
+.month-header .expand-icon { font-size: 14px; color: #999; transition: transform 0.2s; }
+.month-header.expanded .expand-icon { transform: rotate(90deg); }
+
+.month-body { display: none; padding: 20px 24px; }
+.month-body.show { display: block; }
+
+/* Bank row in monthly */
+.bank-row {
+  display: flex; align-items: flex-start; padding: 10px 0;
+  border-bottom: 1px solid #f5f5f5;
+}
+.bank-row:last-child { border-bottom: none; }
+.bank-row .bank-name {
+  width: 120px; font-weight: 600; font-size: 14px;
+  display: flex; align-items: center; gap: 6px;
+  padding-top: 6px;
+}
+.bank-row .bank-name.icbc { color: #c0392b; }
+.bank-row .bank-name .dot {
+  width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+}
+.bank-row .bank-name.icbc .dot { background: #c0392b; }
+.bank-row .bank-name .dot { background: #95a5a6; }
+.bank-row .bar-container {
+  width: 220px; height: 24px; border-radius: 4px; overflow: hidden;
+  display: flex; background: #f0f0f0; margin: 0 12px; flex-shrink: 0;
+  margin-top: 4px;
+}
+.bank-row .bar-pos { background: #27ae60; height: 100%; transition: width 0.5s; }
+.bank-row .bar-neg { background: #e74c3c; height: 100%; transition: width 0.5s; }
+.bank-row .bank-counts {
+  width: 140px; text-align: right; font-size: 13px; color: #666;
+  padding-top: 6px; flex-shrink: 0;
+}
+.bank-row .bank-counts .neg { color: #e74c3c; font-weight: 600; }
+.bank-row .bank-counts .pos { color: #27ae60; font-weight: 600; }
+
+/* Top keywords */
+.month-keywords {
+  margin-top: 12px; padding: 12px 0; border-top: 1px solid #f5f5f5;
+}
+.month-keywords-title { font-size: 13px; color: #999; margin-bottom: 8px; }
+.keyword-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+.kw-tag {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; border-radius: 16px; font-size: 13px;
+  background: #f8f8f8; border: 1px solid #eee;
+}
+.kw-tag .kw-count { font-weight: 600; color: #333; }
+.kw-tag .kw-neg { color: #e74c3c; }
+.kw-tag .kw-pos { color: #27ae60; }
+
+/* Article list in month */
+.month-articles {
+  margin-top: 12px; padding: 12px 0; border-top: 1px solid #f5f5f5;
+}
+.month-articles-title { font-size: 13px; color: #999; margin-bottom: 8px; }
+.article-item {
+  display: flex; align-items: center; padding: 8px 12px;
+  border-radius: 6px; margin-bottom: 4px; cursor: pointer;
+  transition: background 0.15s;
+}
+.article-item:hover { background: #f8f8f8; }
+.article-item .sent-dot {
+  width: 10px; height: 10px; border-radius: 50%; margin-right: 10px; flex-shrink: 0;
+}
+.article-item .sent-dot.neg { background: #e74c3c; }
+.article-item .sent-dot.pos { background: #27ae60; }
+.article-item .art-title {
+  flex: 1; font-size: 13px; color: #333;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.article-item .art-source {
+  font-size: 12px; color: #fff; margin-left: 8px;
+  padding: 2px 8px; border-radius: 10px; font-weight: 500;
+}
+.article-item .art-source.src-小红书 { background: #e74c3c; }
+.article-item .art-source.src-微博 { background: #e67e22; }
+.article-item .art-source.src-知乎 { background: #3498db; }
+.article-item .art-source.src-百度资讯 { background: #27ae60; }
+
+/* 月度页：银行分类的热门词条 */
+.bank-kw-block {
+  flex: 1; margin-top: 4px;
+  padding: 6px 10px; background: #fafafa;
+  border-radius: 6px; border-left: 3px solid #ddd;
+  min-width: 0;
+}
+.bank-kw-block.icbc { border-left-color: #c0392b; background: #fdf3f3; }
+.bank-kw-block .bank-kw-title {
+  font-size: 12px; color: #666; margin-bottom: 4px; font-weight: 600;
+}
+.bank-kw-block.icbc .bank-kw-title { color: #c0392b; }
+.bank-kw-block .keyword-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.bank-kw-block .kw-tag {
+  display: inline-flex; align-items: center; gap: 3px;
+  padding: 1px 6px; background: #fff; border: 1px solid #e0e0e0;
+  border-radius: 10px; font-size: 11px; color: #555;
+}
+.bank-kw-block .kw-tag .kw-count { font-weight: 600; color: #333; }
+.bank-kw-block .kw-tag .kw-neg { color: #e74c3c; }
+.bank-kw-block .kw-tag .kw-pos { color: #27ae60; }
+
+/* 月份快速切换 chips */
+.month-chips {
+  display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px 0;
+  padding: 12px 16px; background: #f8f9fa; border-radius: 8px;
+  align-items: center;
+}
+.month-chips-label {
+  font-size: 13px; color: #666; font-weight: 600; margin-right: 4px;
+}
+.month-chip {
+  padding: 6px 14px; background: #fff; border: 1px solid #e0e0e0;
+  border-radius: 16px; cursor: pointer; font-size: 13px; color: #555;
+  transition: all 0.15s; user-select: none;
+}
+.month-chip:hover { border-color: #c0392b; color: #c0392b; }
+.month-chip.active { background: #c0392b; color: #fff; border-color: #c0392b; }
+.month-chip .chip-count {
+  display: inline-block; margin-left: 4px; padding: 0 6px;
+  background: rgba(0,0,0,0.08); border-radius: 8px; font-size: 11px;
+}
+.month-chip.active .chip-count { background: rgba(255,255,255,0.3); }
+
+/* 每日页：当日 / 日期范围 切换 */
+.daily-mode-switch {
+  display: inline-flex; background: #f0f0f0; border-radius: 6px; padding: 2px;
+  margin-right: 8px;
+}
+.daily-mode-btn {
+  padding: 6px 14px; border: none; background: transparent;
+  cursor: pointer; font-size: 12px; color: #666; border-radius: 4px;
+}
+.daily-mode-btn.active { background: #fff; color: #c0392b; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+.article-item .art-source.src-其他 { background: #95a5a6; }
+.article-item .art-date { font-size: 12px; color: #aaa; margin-left: 8px; }
+.article-item .art-interact {
+  font-size: 12px; color: #888; margin-left: 12px; display: flex; gap: 8px;
+}
+
+/* Daily view */
+.daily-view { display: none; }
+.daily-view.show { display: block; }
+
+.bank-card {
+  background: #fff; border-radius: 12px; margin-bottom: 16px;
+  overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+}
+.bank-card.icbc { border: 2px solid #c0392b; }
+.bank-card-header {
+  padding: 16px 24px; cursor: pointer; display: flex;
+  align-items: center; justify-content: space-between;
+}
+.bank-card.icbc .bank-card-header {
+  background: linear-gradient(135deg, #fdf2f2 0%, #fff5f5 100%);
+}
+.bank-card .bank-card-header {
+  background: #f8f9fa;
+}
+.bank-card-header .bank-title {
+  font-size: 18px; font-weight: 600; display: flex; align-items: center; gap: 8px;
+}
+.bank-card.icbc .bank-title { color: #c0392b; }
+.bank-card-header .bank-stats { display: flex; gap: 16px; font-size: 13px; }
+
+/* Source tabs */
+.source-tabs {
+  display: flex; gap: 0; padding: 0 24px; border-bottom: 1px solid #f0f0f0;
+}
+.source-tab {
+  padding: 10px 20px; border: none; background: none; cursor: pointer;
+  font-size: 14px; color: #666; border-bottom: 2px solid transparent;
+}
+.source-tab.active { color: #c0392b; border-bottom-color: #c0392b; }
+
+/* Article cards */
+.articles-container { padding: 16px 24px; }
+.keyword-group { margin-bottom: 16px; }
+.keyword-group-title {
+  font-size: 14px; font-weight: 600; color: #555; margin-bottom: 8px;
+  padding: 6px 12px; background: #f8f8f8; border-radius: 6px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.article-card {
+  display: flex; align-items: center; padding: 12px 16px;
+  border-radius: 8px; margin-bottom: 6px; cursor: pointer;
+  transition: all 0.15s; border: 1px solid #f0f0f0;
+}
+.article-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); transform: translateX(2px); }
+.article-card.neg { border-left: 4px solid #e74c3c; }
+.article-card.pos { border-left: 4px solid #27ae60; }
+.article-card .sent-icon { font-size: 14px; margin-right: 10px; }
+.article-card .ac-info { flex: 1; }
+.article-card .ac-title { font-size: 14px; color: #333; margin-bottom: 4px; }
+.article-card .ac-meta { display: flex; gap: 10px; font-size: 12px; color: #999; }
+.article-card .ac-meta .src-tag {
+  font-size: 11px; padding: 1px 8px; border-radius: 8px; font-weight: 500;
+}
+.src-tag.weibo, .src-tag.微博 { background: #fef2f2; color: #e74c3c; }
+.src-tag.xhs, .src-tag.小红书 { background: #fef5ec; color: #f39c12; }
+.src-tag.douyin, .src-tag.抖音 { background: #eef2ff; color: #5b6abf; }
+.src-tag.zhihu, .src-tag.知乎 { background: #e8f4fd; color: #3498db; }
+.src-tag.baidu, .src-tag.百度资讯 { background: #e8f8f0; color: #27ae60; }
+.article-card .ac-interact { font-size: 12px; color: #888; margin-right: 12px; display: flex; gap: 8px; }
+.article-card .ac-link { font-size: 12px; color: #3498db; }
+.article-card .ac-date { font-size: 12px; color: #aaa; margin-left: 8px; }
+
+/* Loading */
+.loading { text-align: center; padding: 40px; color: #999; }
+.no-data { text-align: center; padding: 40px; color: #ccc; font-size: 15px; }
+
+/* Filter bar */
+.filter-bar {
+  background: #fff; padding: 12px 30px; display: flex;
+  gap: 16px; align-items: center; border-bottom: 1px solid #eee;
+  flex-wrap: wrap;
+}
+.filter-bar select, .filter-bar input {
+  padding: 6px 12px; border: 1px solid #ddd; border-radius: 6px;
+  font-size: 13px; outline: none;
+}
+.filter-bar select:focus, .filter-bar input:focus { border-color: #c0392b; }
+.filter-bar label { font-size: 13px; color: #666; }
+.filter-bar .filter-badge {
+  background: #c0392b; color: #fff; font-size: 11px; padding: 2px 8px;
+  border-radius: 10px; margin-left: 4px;
+}
+
+/* Daily summary banner */
+.daily-summary {
+  background: linear-gradient(135deg, #fdf2f2 0%, #fef9f3 100%);
+  padding: 14px 24px; border-radius: 8px; margin-bottom: 16px;
+  display: flex; gap: 24px; align-items: center;
+  border: 1px solid #f5e0e0;
+}
+.daily-summary .ds-label { font-size: 13px; color: #666; }
+.daily-summary .ds-num { font-size: 20px; font-weight: 700; color: #c0392b; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div>
+    <h1>银行舆情监测看板</h1>
+    <div class="subtitle">工商银行为主 | 覆盖小红书/微博/知乎/新闻 | 实时数据可溯源</div>
+  </div>
+  <div class="stats" id="headerStats">
+    <div class="stat-item"><div class="stat-num" id="totalCount">0</div><div class="stat-label">总舆情</div></div>
+    <div class="stat-item"><div class="stat-num neg" id="negCount">0</div><div class="stat-label">负面</div></div>
+    <div class="stat-item"><div class="stat-num pos" id="posCount">0</div><div class="stat-label">正面</div></div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" onclick="switchTab('monthly')">月度总结</button>
+  <button class="tab-btn" onclick="switchTab('daily')">每日详情</button>
+</div>
+
+<!-- 月度页筛选：仅月度页用 -->
+<div class="filter-bar" id="monthlyFilter">
+  <label>银行筛选:</label>
+  <select id="bankFilter" onchange="reloadData()">
+    <option value="">全部银行</option>
+    <option value="工商银行">工商银行</option>
+    <option value="建设银行">建设银行</option>
+    <option value="中国银行">中国银行</option>
+    <option value="农业银行">农业银行</option>
+  </select>
+
+  <label>来源:</label>
+  <select id="sourceFilter" onchange="reloadData()">
+    <option value="">全部来源</option>
+    <option value="小红书">小红书</option>
+    <option value="微博">微博</option>
+    <option value="知乎">知乎</option>
+    <option value="百度资讯">百度资讯</option>
+  </select>
+</div>
+
+<!-- 每日页筛选：仅每日页用 -->
+<div class="filter-bar" id="dailyFilter" style="display:none">
+  <div class="daily-mode-switch">
+    <button class="daily-mode-btn active" id="modeToday" onclick="setDailyMode('today')">当日</button>
+    <button class="daily-mode-btn" id="modeRange" onclick="setDailyMode('range')">日期范围</button>
+  </div>
+  <label>来源:</label>
+  <select id="dailySourceFilter" onchange="reloadData()">
+    <option value="">全部来源</option>
+    <option value="小红书">小红书</option>
+    <option value="微博">微博</option>
+    <option value="知乎">知乎</option>
+    <option value="百度资讯">百度资讯</option>
+  </select>
+  <label id="dailyDateLabel" style="display:none">日期范围:</label>
+  <span id="dailyDateRange" style="display:none">
+    <input type="date" id="dailyDateFrom">
+    <span style="font-size:12px;color:#999;margin:0 4px;">到</span>
+    <input type="date" id="dailyDateTo">
+    <button onclick="applyDailyRange()" style="padding:4px 12px;border:1px solid #c0392b;border-radius:4px;background:#c0392b;color:#fff;cursor:pointer;font-size:12px;">查询</button>
+  </span>
+</div>
+
+<div class="container">
+  <!-- Monthly Summary View -->
+  <div id="monthlyView">
+    <div id="monthlyChips" class="month-chips"></div>
+    <div id="monthlyList"><div class="loading">加载中...</div></div>
+  </div>
+
+  <!-- Daily View -->
+  <div id="dailyView" class="daily-view">
+    <div id="dailySummary" class="daily-summary" style="display:none">
+      <div><span class="ds-label">数据范围:</span> <span id="dsRange" class="ds-num" style="font-size:14px"></span></div>
+      <div><span class="ds-label">共</span> <span id="dsCount" class="ds-num"></span> <span class="ds-label">条</span></div>
+    </div>
+    <div id="bankCards"><div class="loading">加载中...</div></div>
+  </div>
+</div>
+
+<script>
+let currentTab = 'monthly';
+let currentBank = '';
+let currentSource = '';
+let monthlyData = [];
+let selectedMonth = 'all';
+let dailyMode = 'today';
+let dailyDateFrom = null;
+let dailyDateTo = null;
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  const activeBtn = (event && event.target) || document.querySelector('.tab-btn');
+  activeBtn.classList.add('active');
+  document.getElementById('monthlyView').style.display = tab === 'monthly' ? 'block' : 'none';
+  document.getElementById('dailyView').classList.toggle('show', tab === 'daily');
+  document.getElementById('monthlyFilter').style.display = tab === 'monthly' ? 'flex' : 'none';
+  document.getElementById('dailyFilter').style.display = tab === 'daily' ? 'flex' : 'none';
+  if (tab === 'daily') initDailyDate();
+  reloadData();
+}
+
+function selectMonthChip(month) {
+  selectedMonth = month;
+  renderMonthly();
+}
+
+function setDailyMode(mode) {
+  dailyMode = mode;
+  document.getElementById('modeToday').classList.toggle('active', mode === 'today');
+  document.getElementById('modeRange').classList.toggle('active', mode === 'range');
+  const showRange = mode === 'range';
+  document.getElementById('dailyDateRange').style.display = showRange ? 'inline' : 'none';
+  document.getElementById('dailyDateLabel').style.display = showRange ? 'inline' : 'none';
+  if (mode === 'today') {
+    // 当日模式：直接重新加载今天
+    initDailyDate();
+    reloadData();
+  }
+}
+
+function initDailyDate() {
+  if (dailyMode === 'today') {
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, '0');
+    const d = String(today.getDate()).padStart(2, '0');
+    const todayStr = `${y}-${m}-${d}`;
+    dailyDateFrom = todayStr;
+    dailyDateTo = todayStr;
+    // 同步给 input
+    const df = document.getElementById('dailyDateFrom');
+    const dt = document.getElementById('dailyDateTo');
+    if (df) df.value = todayStr;
+    if (dt) dt.value = todayStr;
+  } else {
+    dailyDateFrom = document.getElementById('dailyDateFrom').value || null;
+    dailyDateTo = document.getElementById('dailyDateTo').value || null;
+  }
+}
+
+function applyDailyRange() {
+  initDailyDate();
+  if (!dailyDateFrom || !dailyDateTo) {
+    alert('请先选择起止日期');
+    return;
+  }
+  if (dailyDateFrom > dailyDateTo) {
+    alert('起始日期不能大于结束日期');
+    return;
+  }
+  reloadData();
+}
+
+function reloadData() {
+  currentBank = document.getElementById('bankFilter').value;
+  currentSource = document.getElementById('sourceFilter').value;
+  if (currentTab === 'monthly') {
+    loadStats();
+    loadMonthly();
+  } else {
+    initDailyDate();
+    loadStats();
+    loadDaily();
+  }
+}
+
+async function loadStats() {
+  const params = new URLSearchParams();
+  if (currentBank) params.set('bank', currentBank);
+  if (currentSource) params.set('source', currentSource);
+  // 每日页用 daily 日期；月度页用月度当前选中月份的 [first, last]
+  if (currentTab === 'daily') {
+    if (dailyDateFrom) params.set('date_from', dailyDateFrom);
+    if (dailyDateTo) params.set('date_to', dailyDateTo);
+  } else {
+    if (selectedMonth && selectedMonth !== 'all') {
+      const [y, m] = selectedMonth.split('-');
+      const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+      params.set('date_from', `${selectedMonth}-01`);
+      params.set('date_to', `${selectedMonth}-${String(lastDay).padStart(2,'0')}`);
+    }
+  }
+  const res = await fetch('/api/stats' + (params.toString() ? '?' + params.toString() : ''));
+  const data = await res.json();
+  document.getElementById('totalCount').textContent = data.total || 0;
+  document.getElementById('negCount').textContent = data.negative || 0;
+  document.getElementById('posCount').textContent = data.positive || 0;
+}
+
+// ============ Monthly View ============
+async function loadMonthly() {
+  const params = new URLSearchParams();
+  if (currentBank) params.set('bank', currentBank);
+  if (currentSource) params.set('source', currentSource);
+  if (selectedMonth && selectedMonth !== 'all') {
+    const [y, m] = selectedMonth.split('-');
+    const lastDay = new Date(parseInt(y), parseInt(m), 0).getDate();
+    params.set('date_from', `${selectedMonth}-01`);
+    params.set('date_to', `${selectedMonth}-${String(lastDay).padStart(2,'0')}`);
+  }
+  const res = await fetch('/api/monthly' + (params.toString() ? '?' + params.toString() : ''));
+  monthlyData = await res.json();
+  renderMonthly();
+}
+
+function renderMonthly() {
+  const container = document.getElementById('monthlyList');
+  const chipsContainer = document.getElementById('monthlyChips');
+
+  // 渲染 chips
+  if (chipsContainer) {
+    // 从 EMBEDDED_DATA 拿当前年的所有月份
+    const dataMonths = (window.EMBEDDED_DATA && window.EMBEDDED_DATA.monthly) || [];
+    // 用当前年 + 1~12 静态拼，确保显示 1-12 月
+    const now = new Date();
+    const year = now.getFullYear();
+    const ymNow = year + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    // 累加 EMBEDDED_DATA 里的数据，得到每个月的 total（用于 chip 上的数字）
+    const monthTotals = {};
+    for (const m of dataMonths) {
+      monthTotals[m.month] = m.total || 0;
+    }
+    let totalAll = 0;
+    for (const m of dataMonths) totalAll += (m.total || 0);
+
+    let chipsHtml = '<div class="month-chips-label">月份:</div>';
+    chipsHtml += '<div class="month-chip ' + (selectedMonth === 'all' ? 'active' : '') + '" onclick="selectMonthChip(\'all\')">全部<span class="chip-count">' + totalAll + '</span></div>';
+    for (let mm = 1; mm <= 12; mm++) {
+      const m = year + '-' + String(mm).padStart(2, '0');
+      if (m > ymNow) continue; // 不显示未来月份
+      const label = mm + '月';
+      const count = monthTotals[m] || 0;
+      chipsHtml += '<div class="month-chip ' + (selectedMonth === m ? 'active' : '') + '" onclick="selectMonthChip(\'' + m + '\')">' + label + '<span class="chip-count">' + count + '</span></div>';
+    }
+    chipsContainer.innerHTML = chipsHtml;
+  }
+
+  const displayData = selectedMonth === 'all' ? monthlyData : monthlyData.filter(m => m.month === selectedMonth);
+  if (!displayData || displayData.length === 0) {
+    container.innerHTML = '<div class="no-data">该月份暂无数据</div>';
+    return;
+  }
+
+  let html = '';
+  for (const m of displayData) {
+    const monthLabel = m.month.replace('-', '年') + '月';
+    const negPct = m.total > 0 ? Math.round(m.negative / m.total * 100) : 0;
+    const posPct = m.total > 0 ? Math.round(m.positive / m.total * 100) : 0;
+
+    // Bank rows (ICBC first) — 每家银行下面带各自热门词条
+    let bankRowsHtml = '';
+    for (const b of m.by_bank) {
+      const isIcbc = b.bank === '工商银行';
+      const total = b.count || 0;
+      const pos = b.positive || 0;
+      const neg = b.negative || 0;
+      const posWidth = total > 0 ? (pos / total * 100) : 0;
+      const negWidth = total > 0 ? (neg / total * 100) : 0;
+      const bankKws = (m.top_keywords_by_bank && m.top_keywords_by_bank[b.bank]) || [];
+      let bankKwHtml = '';
+      if (bankKws.length > 0) {
+        bankKwHtml = '<div class="bank-kw-block' + (isIcbc ? ' icbc' : '') + '">';
+        bankKwHtml += '<div class="bank-kw-title">📌 ' + b.bank + ' 当月热门词条</div>';
+        bankKwHtml += '<div class="keyword-tags">';
+        for (const kw of bankKws) {
+          const kn = kw.negative || 0;
+          const kp = kw.positive || 0;
+          bankKwHtml += '<span class="kw-tag"><span class="kw-count">' + kw.keyword + '</span><span class="kw-count">' + kw.count + '</span>';
+          if (kn > 0) bankKwHtml += '<span class="kw-neg">' + kn + '负</span>';
+          if (kp > 0) bankKwHtml += '<span class="kw-pos">' + kp + '正</span>';
+          bankKwHtml += '</span>';
+        }
+        bankKwHtml += '</div></div>';
+      }
+      bankRowsHtml += `
+        <div class="bank-row">
+          <div class="bank-name ${isIcbc ? 'icbc' : ''}">
+            <span class="dot"></span>${b.bank}
+          </div>
+          <div class="bar-container">
+            <div class="bar-pos" style="width:${posWidth}%"></div>
+            <div class="bar-neg" style="width:${negWidth}%"></div>
+          </div>
+          <div class="bank-counts">
+            <span class="neg">${neg}负</span> / <span class="pos">${pos}正</span> / ${total}
+          </div>
+          ${bankKwHtml}
+        </div>`;
+    }
+
+    // Top keywords
+    let kwHtml = '';
+    if (m.top_keywords && m.top_keywords.length > 0) {
+      kwHtml = '<div class="keyword-tags">';
+      for (const kw of m.top_keywords) {
+        const neg = kw.negative || 0;
+        const pos = kw.positive || 0;
+        kwHtml += `<span class="kw-tag">
+          <span class="kw-count">${kw.keyword}</span>
+          <span class="kw-count">${kw.count}</span>
+          ${neg > 0 ? `<span class="kw-neg">${neg}负</span>` : ''}
+          ${pos > 0 ? `<span class="kw-pos">${pos}正</span>` : ''}
+        </span>`;
+      }
+      kwHtml += '</div>';
+    }
+
+    html += `
+    <div class="month-card">
+      <div class="month-header" onclick="toggleMonth(this)">
+        <div class="month-title">${monthLabel}</div>
+        <div class="month-stats">
+          <div class="month-stat">总计 <span class="num">${m.total}</span></div>
+          <div class="month-stat">负面 <span class="num neg">${m.negative}</span></div>
+          <div class="month-stat">正面 <span class="num pos">${m.positive}</span></div>
+          <span class="expand-icon">▶</span>
+        </div>
+      </div>
+      <div class="month-body">
+        ${bankRowsHtml}
+        ${kwHtml ? `<div class="month-keywords"><div class="month-keywords-title">全银行热门词条</div>${kwHtml}</div>` : ''}
+        <div class="month-articles">
+          <div class="month-articles-title">当月舆情明细</div>
+          <div id="articles-${m.month}"><div style="color:#999;padding:8px;">点击加载...</div></div>
+        </div>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+}
+
+function toggleMonth(header) {
+  const body = header.nextElementSibling;
+  const isShow = body.classList.contains('show');
+  body.classList.toggle('show');
+  header.classList.toggle('expanded');
+  if (!isShow) {
+    const month = body.querySelector('.month-articles > div[id]').id.replace('articles-', '');
+    loadMonthArticles(month);
+  }
+}
+
+async function loadMonthArticles(month) {
+  const container = document.getElementById('articles-' + month);
+  if (!container || container.dataset.loaded) return;
+  container.innerHTML = '<div style="color:#999;padding:8px;">加载中...</div>';
+  const params = new URLSearchParams();
+  if (currentBank) params.set('bank', currentBank);
+  if (currentSource) params.set('source', currentSource);
+  const res = await fetch(`/api/month/${month}${params.toString() ? '?' + params.toString() : ''}`);
+  const articles = await res.json();
+  if (!articles || articles.length === 0) {
+    container.innerHTML = '<div style="color:#ccc;padding:8px;">无数据</div>';
+    return;
+  }
+  let html = '';
+  for (const a of articles) {
+    const sentClass = a.sentiment === '负面' ? 'neg' : 'pos';
+    const date = (a.published_at || a.crawled_at || '').substring(0, 10);
+    let interact = '';
+    if (a.likes > 0 || a.comments > 0 || a.collects > 0) {
+      interact = `<div class="art-interact">`;
+      if (a.likes > 0) interact += `<span>赞${a.likes}</span>`;
+      if (a.comments > 0) interact += `<span>评${a.comments}</span>`;
+      if (a.collects > 0) interact += `<span>藏${a.collects}</span>`;
+      interact += `</div>`;
+    }
+    html += `
+    <div class="article-item" onclick="window.open('${escUrl(a.url)}', '_blank')">
+      <div class="sent-dot ${sentClass}"></div>
+      <div class="art-title">${escHtml(a.title || a.content.substring(0, 50))}</div>
+      ${interact}
+      <div class="art-source src-${escHtml(a.source)}">${escHtml(a.source)}</div>
+      <div class="art-date">${date}</div>
+    </div>`;
+  }
+  container.innerHTML = html;
+  container.dataset.loaded = '1';
+}
+
+// ============ Daily View (ICBC only) ============
+async function loadDaily() {
+  initDailyDate();
+  const dailySource = document.getElementById('dailySourceFilter').value;
+  const params = new URLSearchParams();
+  if (dailySource) params.set('source', dailySource);
+  if (dailyDateFrom) params.set('date_from', dailyDateFrom);
+  if (dailyDateTo) params.set('date_to', dailyDateTo);
+  params.set('bank', '工商银行');
+  const res = await fetch('/api/stats?' + params.toString());
+  const stats = await res.json();
+  const container = document.getElementById('bankCards');
+
+  // 更新 summary banner
+  const summary = document.getElementById('dailySummary');
+  document.getElementById('dsRange').textContent = (dailyDateFrom === dailyDateTo) ? dailyDateFrom : (dailyDateFrom + ' ~ ' + dailyDateTo);
+  document.getElementById('dsCount').textContent = stats.total || 0;
+  summary.style.display = 'flex';
+
+  // Only show ICBC in daily view
+  let banks = (stats.by_bank || []).filter(b => b.bank === '工商银行');
+
+  let html = '';
+  for (const b of banks) {
+    const isIcbc = b.bank === '工商银行';
+    html += `
+    <div class="bank-card ${isIcbc ? 'icbc' : ''}">
+      <div class="bank-card-header" onclick="this.nextElementSibling?.classList?.toggle('show')">
+        <div class="bank-title">${isIcbc ? '🔴' : '⚪'} ${b.bank}</div>
+        <div class="bank-stats">
+          <span>共 ${b.count} 条</span>
+          <span style="color:#e74c3c">负面 ${b.negative}</span>
+          <span style="color:#27ae60">正面 ${b.positive}</span>
+        </div>
+      </div>
+      <div class="bank-body" id="bank-body-${b.bank}">
+        <div class="loading">加载中...</div>
+      </div>
+    </div>`;
+  }
+  container.innerHTML = html;
+
+  for (const b of banks) {
+    loadBankArticles(b.bank);
+  }
+}
+
+async function loadBankArticles(bank) {
+  const container = document.getElementById('bank-body-' + bank);
+  if (!container) return;
+  const params = new URLSearchParams();
+  params.set('bank', bank);
+  params.set('limit', '500');
+  const dailySource = document.getElementById('dailySourceFilter').value;
+  if (dailySource) params.set('source', dailySource);
+  if (dailyDateFrom) params.set('date_from', dailyDateFrom);
+  if (dailyDateTo) params.set('date_to', dailyDateTo);
+  const res = await fetch('/api/articles?' + params.toString());
+  const articles = await res.json();
+
+  // 按 (source, keyword) 分组；用 published_at 倒序
+  const grouped = {};
+  for (const a of articles) {
+    if (!grouped[a.source]) grouped[a.source] = {};
+    if (!grouped[a.source][a.keyword]) grouped[a.source][a.keyword] = [];
+    grouped[a.source][a.keyword].push(a);
+  }
+
+  const sourceOrder = ['小红书', '微博', '知乎', '百度资讯'];
+  const sources = Object.keys(grouped).sort((a, b) => {
+    const ia = sourceOrder.indexOf(a); const ib = sourceOrder.indexOf(b);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  });
+
+  let html = '';
+  if (sources.length === 0) {
+    html = '<div class="no-data">该日期范围内暂无数据，请尝试选择更宽的日期或更换来源</div>';
+  } else {
+    html += '<div class="source-tabs">';
+    sources.forEach((s, i) => {
+      const srcCount = grouped[s] ? Object.values(grouped[s]).flat().length : 0;
+      html += `<button class="source-tab ${i === 0 ? 'active' : ''}" onclick="switchSource(this, '${bank}')">${s} (${srcCount})</button>`;
+    });
+    html += '</div>';
+
+    sources.forEach((s, i) => {
+      html += `<div class="articles-container source-content-${bank}" style="display:${i === 0 ? 'block' : 'none'}" data-source="${s}">`;
+      const kwGroups = grouped[s] || {};
+      const sortedKws = Object.keys(kwGroups).sort((a, b) => kwGroups[b].length - kwGroups[a].length);
+      for (const kw of sortedKws) {
+        const arts = kwGroups[kw];
+        html += `<div class="keyword-group"><div class="keyword-group-title">${kw} <span style="color:#999;font-size:12px">${arts.length}条</span></div>`;
+        for (const a of arts) {
+          const sentClass = a.sentiment === '负面' ? 'neg' : 'pos';
+          const sentEmoji = a.sentiment === '负面' ? '🔴' : '🟢';
+          const date = (a.published_at || a.crawled_at || '').substring(0, 10);
+          let interact = '';
+          if (a.likes > 0 || a.comments > 0 || a.collects > 0) {
+            interact = `<div class="ac-interact">`;
+            if (a.likes > 0) interact += `<span>赞${a.likes}</span>`;
+            if (a.comments > 0) interact += `<span>评${a.comments}</span>`;
+            if (a.collects > 0) interact += `<span>藏${a.collects}</span>`;
+            interact += `</div>`;
+          }
+          html += `
+          <div class="article-card ${sentClass}" onclick="window.open('${escUrl(a.url)}', '_blank')">
+            <div class="sent-icon">${sentEmoji}</div>
+            <div class="ac-info">
+              <div class="ac-title">${escHtml(a.title || a.content.substring(0, 60))}</div>
+              <div class="ac-meta">
+                <span class="src-tag ${srcClass(a.source)}">${a.source}</span>
+                <span>${escHtml(a.author || '')}</span>
+                <span class="ac-date">${date}</span>
+              </div>
+            </div>
+            ${interact}
+            <span class="ac-link">查看原文 →</span>
+          </div>`;
+        }
+        html += '</div>';
+      }
+      html += '</div>';
+    });
+  }
+  container.innerHTML = html;
+}
+
+function switchSource(btn, bank) {
+  const parent = btn.parentElement;
+  parent.querySelectorAll('.source-tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  const idx = Array.from(parent.children).indexOf(btn);
+  document.querySelectorAll('.source-content-' + bank).forEach((c, i) => {
+    c.style.display = i === idx ? 'block' : 'none';
+  });
+}
+
+// ============ Utils ============
+function escHtml(s) { const d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
+function escUrl(s) { return (s || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;'); }
+function srcClass(src) {
+  if (src.includes('微博')) return 'weibo';
+  if (src.includes('小红书') || src.includes('xhs')) return 'xhs';
+  if (src.includes('知乎')) return 'zhihu';
+  if (src.includes('百度')) return 'baidu';
+  if (src.includes('抖音')) return 'douyin';
+  return '';
+}
+
+// Init
+reloadData();
+</script>
+</body>
+</html>
